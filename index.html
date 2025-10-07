@@ -12,7 +12,7 @@
     }
   </style>
 </head>
-<body class="bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 text-white min-h-screen">
+<body class="bg-white text-gray-900 min-h-screen">
   <div id="app"></div>
 
   <script type="module">
@@ -243,15 +243,11 @@
 
     async function lookupFlight(flightNumber) {
       try {
-        const match = flightNumber.match(/^([A-Z]{2})(\d+)$/i);
-        if (!match) {
-          alert('Please enter flight number like: UA125, AA184, DL456');
-          return null;
-        }
-
-        const flightCode = match[0].toUpperCase();
+        // Clean up the flight number but don't restrict format
+        const cleanNumber = flightNumber.trim().toUpperCase().replace(/\s+/g, '');
         
-        const url = `https://api.aviationstack.com/v1/flights?access_key=${FLIGHT_API_KEY}&flight_iata=${flightCode}&limit=1`;
+        // Try the API with the flight number as-is
+        const url = `https://api.aviationstack.com/v1/flights?access_key=${FLIGHT_API_KEY}&flight_iata=${cleanNumber}&limit=1`;
         const response = await fetch(url);
         
         if (!response.ok) {
@@ -374,16 +370,16 @@
 
       const html = [];
       
-      html.push('<div class="bg-blue-950 shadow-lg">');
+      html.push('<div class="bg-gray-100 shadow border-b border-gray-200">');
       html.push('  <div class="max-w-4xl mx-auto px-6 py-6">');
       html.push('    <div class="flex items-center justify-between mb-4">');
       html.push('      <div>');
-      html.push('        <h1 class="text-3xl font-bold tracking-tight">Pamelas Travel Hub</h1>');
-      html.push('        <p class="text-blue-300 text-sm mt-1">');
+      html.push('        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Pamelas Travel Hub</h1>');
+      html.push('        <p class="text-gray-600 text-sm mt-1">');
       html.push(lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : 'Loading...');
       html.push('        </p>');
       html.push('      </div>');
-      html.push('      <button onclick="window.refreshData()" class="bg-blue-600 hover:bg-blue-500 p-3 rounded-full transition-all">');
+      html.push('      <button onclick="window.refreshData()" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded transition-all">');
       html.push('        <svg class="w-5 h-5' + (loading ? ' animate-spin' : '') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24">');
       html.push('          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />');
       html.push('        </svg>');
@@ -391,18 +387,18 @@
       html.push('    </div>');
       
       html.push('    <div class="flex gap-2 mb-4">');
-      html.push('      <button onclick="window.setTab(\'airports\')" class="px-6 py-2 rounded-lg font-medium transition-all ' + (activeTab === 'airports' ? 'bg-blue-600 text-white' : 'bg-blue-900 text-blue-300 hover:bg-blue-800') + '">');
+      html.push('      <button onclick="window.setTab(\'airports\')" class="px-6 py-2 rounded font-medium transition-all ' + (activeTab === 'airports' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">');
       html.push('        🌐 Airport Status');
       html.push('      </button>');
-      html.push('      <button onclick="window.setTab(\'flights\')" class="px-6 py-2 rounded-lg font-medium transition-all ' + (activeTab === 'flights' ? 'bg-blue-600 text-white' : 'bg-blue-900 text-blue-300 hover:bg-blue-800') + '">');
+      html.push('      <button onclick="window.setTab(\'flights\')" class="px-6 py-2 rounded font-medium transition-all ' + (activeTab === 'flights' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">');
       html.push('        ✈️ My Flights' + (trackedFlights.length > 0 ? ` (${trackedFlights.length})` : ''));
       html.push('      </button>');
       html.push('    </div>');
       
       if (activeTab === 'airports') {
         html.push('    <div class="relative">');
-        html.push('      <input type="text" placeholder="Search by airport code or name..." value="' + searchQuery + '" oninput="window.setSearch(this.value)" class="w-full bg-blue-900 text-white placeholder-blue-400 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />');
-        html.push('      <svg class="absolute right-4 top-3.5 w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">');
+        html.push('      <input type="text" placeholder="Search by airport code or name..." value="' + searchQuery + '" oninput="window.setSearch(this.value)" class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />');
+        html.push('      <svg class="absolute right-4 top-3.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">');
         html.push('        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />');
         html.push('      </svg>');
         html.push('    </div>');
@@ -414,13 +410,13 @@
       if (activeTab === 'airports') {
         html.push('<div class="max-w-4xl mx-auto px-6 py-4">');
         html.push('  <div class="flex gap-2 overflow-x-auto pb-2">');
-        html.push('    <button onclick="window.setFilter(\'all\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'all' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700') + '">All (' + airports.length + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'all\')" class="px-5 py-2 rounded font-medium whitespace-nowrap transition-all ' + (filter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">All (' + airports.length + ')</button>');
         if (favorites.length > 0) {
-          html.push('    <button onclick="window.setFilter(\'favorites\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'favorites' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700') + '">⭐ Favorites (' + favorites.length + ')</button>');
+          html.push('    <button onclick="window.setFilter(\'favorites\')" class="px-5 py-2 rounded font-medium whitespace-nowrap transition-all ' + (filter === 'favorites' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">⭐ Favorites (' + favorites.length + ')</button>');
         }
-        html.push('    <button onclick="window.setFilter(\'severe\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'severe' ? 'bg-red-500 text-white' : 'bg-blue-800 hover:bg-blue-700') + '">🔴 Severe (' + severeCount + ')</button>');
-        html.push('    <button onclick="window.setFilter(\'moderate\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-blue-800 hover:bg-blue-700') + '">🟡 Moderate (' + moderateCount + ')</button>');
-        html.push('    <button onclick="window.setFilter(\'normal\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'normal' ? 'bg-green-500 text-green-900' : 'bg-blue-800 hover:bg-blue-700') + '">🟢 Normal (' + (airports.length - severeCount - moderateCount) + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'severe\')" class="px-5 py-2 rounded font-medium whitespace-nowrap transition-all ' + (filter === 'severe' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">🔴 Severe (' + severeCount + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'moderate\')" class="px-5 py-2 rounded font-medium whitespace-nowrap transition-all ' + (filter === 'moderate' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">🟡 Moderate (' + moderateCount + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'normal\')" class="px-5 py-2 rounded font-medium whitespace-nowrap transition-all ' + (filter === 'normal' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300') + '">🟢 Normal (' + (airports.length - severeCount - moderateCount) + ')</button>');
         html.push('  </div>');
         html.push('</div>');
       }
@@ -428,14 +424,14 @@
       html.push('<div class="max-w-4xl mx-auto px-6 pb-24">');
       
       if (error) {
-        html.push('  <div class="bg-red-900 border border-red-700 rounded-2xl p-4 mb-4 flex items-center gap-3">');
+        html.push('  <div class="bg-red-50 border border-red-300 rounded p-4 mb-4 flex items-center gap-3 text-red-800">');
         html.push('    <span>' + error + '</span>');
         html.push('  </div>');
       }
       
       if (activeTab === 'flights') {
         html.push('  <div class="mb-6">');
-        html.push('    <button onclick="window.showAddFlightForm()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-2">');
+        html.push('    <button onclick="window.showAddFlightForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded transition-all flex items-center justify-center gap-2">');
         html.push('      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>');
         html.push('      Add Flight to Track');
         html.push('    </button>');
@@ -443,9 +439,9 @@
         
         if (trackedFlights.length === 0) {
           html.push('  <div class="text-center py-12">');
-          html.push('    <svg class="w-16 h-16 mx-auto mb-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
-          html.push('    <h3 class="text-xl font-semibold mb-2">No Flights Tracked</h3>');
-          html.push('    <p class="text-blue-300">Click "Add Flight to Track" to monitor flights</p>');
+          html.push('    <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
+          html.push('    <h3 class="text-xl font-semibold mb-2 text-gray-900">No Flights Tracked</h3>');
+          html.push('    <p class="text-gray-600">Click "Add Flight to Track" to monitor flights</p>');
           html.push('  </div>');
         } else {
           html.push('  <div class="space-y-4">');
@@ -458,36 +454,36 @@
             const worstSeverity = fromStatus.severity === 'severe' || toStatus.severity === 'severe' ? 'severe' :
                                  fromStatus.severity === 'moderate' || toStatus.severity === 'moderate' ? 'moderate' : 'normal';
             
-            const ringClass = worstSeverity === 'severe' ? 'ring-2 ring-red-500' : 
-                            worstSeverity === 'moderate' ? 'ring-2 ring-yellow-500' : '';
+            const borderClass = worstSeverity === 'severe' ? 'border-2 border-red-500' : 
+                            worstSeverity === 'moderate' ? 'border-2 border-yellow-500' : 'border border-gray-300';
             
-            html.push('    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-6 shadow-lg ' + ringClass + '">');
+            html.push('    <div class="bg-white rounded p-6 shadow ' + borderClass + '">');
             html.push('      <div class="flex items-start justify-between mb-4">');
             html.push('        <div>');
-            html.push('          <h3 class="text-2xl font-bold">' + flight.flightNumber + '</h3>');
-            html.push('          <p class="text-blue-300 text-sm mt-1">👤 ' + flight.traveler + '</p>');
+            html.push('          <h3 class="text-2xl font-bold text-gray-900">' + flight.flightNumber + '</h3>');
+            html.push('          <p class="text-gray-600 text-sm mt-1">👤 ' + flight.traveler + '</p>');
             html.push('        </div>');
-            html.push('        <button onclick="window.removeFlight(' + flight.id + ')" class="text-red-400 hover:text-red-300 text-sm font-semibold px-3 py-1 rounded-lg hover:bg-red-900">✕ Remove</button>');
+            html.push('        <button onclick="window.removeFlight(' + flight.id + ')" class="text-red-600 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50">✕ Remove</button>');
             html.push('      </div>');
             
             html.push('      <div class="flex items-center gap-4 mb-4">');
-            html.push('        <div class="flex-1 bg-blue-950 rounded-lg p-4">');
-            html.push('          <div class="text-xs text-blue-400 mb-1">FROM</div>');
-            html.push('          <div class="text-2xl font-bold">' + flight.from + '</div>');
-            const fromColor = fromStatus.severity === 'severe' ? 'text-red-400' : fromStatus.severity === 'moderate' ? 'text-yellow-400' : 'text-green-400';
-            html.push('          <div class="mt-2 text-sm ' + fromColor + '">' + fromStatus.text + '</div>');
+            html.push('        <div class="flex-1 bg-gray-50 border border-gray-200 rounded p-4">');
+            html.push('          <div class="text-xs text-gray-500 mb-1">FROM</div>');
+            html.push('          <div class="text-2xl font-bold text-gray-900">' + flight.from + '</div>');
+            const fromColor = fromStatus.severity === 'severe' ? 'text-red-600' : fromStatus.severity === 'moderate' ? 'text-yellow-600' : 'text-green-600';
+            html.push('          <div class="mt-2 text-sm font-medium ' + fromColor + '">' + fromStatus.text + '</div>');
             if (fromWx) {
-              html.push('          <div class="text-xs text-blue-300 mt-2">' + getWeatherDescription(fromWx.code) + ' • ' + fromWx.temp + '°F • ' + fromWx.wind + ' mph</div>');
+              html.push('          <div class="text-xs text-gray-600 mt-2">' + getWeatherDescription(fromWx.code) + ' • ' + fromWx.temp + '°F • ' + fromWx.wind + ' mph</div>');
             }
             html.push('        </div>');
             html.push('        <div class="text-3xl">✈️</div>');
-            html.push('        <div class="flex-1 bg-blue-950 rounded-lg p-4">');
-            html.push('          <div class="text-xs text-blue-400 mb-1">TO</div>');
-            html.push('          <div class="text-2xl font-bold">' + flight.to + '</div>');
-            const toColor = toStatus.severity === 'severe' ? 'text-red-400' : toStatus.severity === 'moderate' ? 'text-yellow-400' : 'text-green-400';
-            html.push('          <div class="mt-2 text-sm ' + toColor + '">' + toStatus.text + '</div>');
+            html.push('        <div class="flex-1 bg-gray-50 border border-gray-200 rounded p-4">');
+            html.push('          <div class="text-xs text-gray-500 mb-1">TO</div>');
+            html.push('          <div class="text-2xl font-bold text-gray-900">' + flight.to + '</div>');
+            const toColor = toStatus.severity === 'severe' ? 'text-red-600' : toStatus.severity === 'moderate' ? 'text-yellow-600' : 'text-green-600';
+            html.push('          <div class="mt-2 text-sm font-medium ' + toColor + '">' + toStatus.text + '</div>');
             if (toWx) {
-              html.push('          <div class="text-xs text-blue-300 mt-2">' + getWeatherDescription(toWx.code) + ' • ' + toWx.temp + '°F • ' + toWx.wind + ' mph</div>');
+              html.push('          <div class="text-xs text-gray-600 mt-2">' + getWeatherDescription(toWx.code) + ' • ' + toWx.temp + '°F • ' + toWx.wind + ' mph</div>');
             }
             html.push('        </div>');
             html.push('      </div>');
@@ -495,15 +491,15 @@
             if ((fromStatus.airport && fromStatus.airport.status) || (toStatus.airport && toStatus.airport.status)) {
               html.push('      <div class="space-y-2 text-sm">');
               if (fromStatus.airport && fromStatus.airport.status && fromStatus.airport.status.reason) {
-                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
-                html.push('          <span class="text-blue-300 font-semibold">' + flight.from + ': </span>');
-                html.push('          <span>' + fromStatus.airport.status.reason + '</span>');
+                html.push('        <div class="bg-gray-50 border border-gray-200 rounded p-3">');
+                html.push('          <span class="text-gray-700 font-semibold">' + flight.from + ': </span>');
+                html.push('          <span class="text-gray-600">' + fromStatus.airport.status.reason + '</span>');
                 html.push('        </div>');
               }
               if (toStatus.airport && toStatus.airport.status && toStatus.airport.status.reason) {
-                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
-                html.push('          <span class="text-blue-300 font-semibold">' + flight.to + ': </span>');
-                html.push('          <span>' + toStatus.airport.status.reason + '</span>');
+                html.push('        <div class="bg-gray-50 border border-gray-200 rounded p-3">');
+                html.push('          <span class="text-gray-700 font-semibold">' + flight.to + ': </span>');
+                html.push('          <span class="text-gray-600">' + toStatus.airport.status.reason + '</span>');
                 html.push('        </div>');
               }
               html.push('      </div>');
@@ -517,14 +513,14 @@
       } else {
         if (loading && airports.length === 0) {
           html.push('  <div class="flex items-center justify-center py-12">');
-          html.push('    <svg class="w-8 h-8 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>');
+          html.push('    <svg class="w-8 h-8 animate-spin text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>');
           html.push('  </div>');
         } else if (filteredAirports.length === 0) {
           html.push('  <div class="text-center py-12">');
-          html.push('    <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
-          html.push('    <p class="text-blue-300 text-lg">No airports found</p>');
+          html.push('    <svg class="w-12 h-12 mx-auto mb-4 opacity-50 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
+          html.push('    <p class="text-gray-600 text-lg">No airports found</p>');
           if (searchQuery) {
-            html.push('    <p class="text-blue-400 text-sm mt-2">Try a different search term</p>');
+            html.push('    <p class="text-gray-500 text-sm mt-2">Try a different search term</p>');
           }
           html.push('  </div>');
         } else {
@@ -535,71 +531,71 @@
             const isFavorite = favorites.includes(airport.IATA);
             const wx = weather[airport.IATA];
             
-            const ringClass = severity === 'severe' ? 'ring-2 ring-red-500' : severity === 'moderate' ? 'ring-2 ring-yellow-500' : '';
-            const statusBadge = severity === 'severe' ? 'bg-red-500 text-white' : severity === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-green-500 text-green-900';
+            const borderClass = severity === 'severe' ? 'border-2 border-red-500' : severity === 'moderate' ? 'border-2 border-yellow-500' : 'border border-gray-300';
+            const statusBadge = severity === 'severe' ? 'bg-red-600 text-white' : severity === 'moderate' ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white';
             const statusText = severity === 'severe' ? '🔴 SEVERE' : severity === 'moderate' ? '🟡 DELAYS' : '🟢 NORMAL';
             
-            html.push('    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all ' + ringClass + '">');
+            html.push('    <div class="bg-white rounded p-5 shadow ' + borderClass + '">');
             html.push('      <div class="flex items-start justify-between mb-3">');
             html.push('        <div class="flex-1">');
             html.push('          <div class="flex items-center gap-2">');
             html.push('            <button onclick="window.toggleFavorite(\'' + airport.IATA + '\')" class="text-2xl hover:scale-110 transition-transform">');
             html.push(isFavorite ? '⭐' : '☆');
             html.push('            </button>');
-            html.push('            <h3 class="text-2xl font-bold">' + airport.IATA + '</h3>');
+            html.push('            <h3 class="text-2xl font-bold text-gray-900">' + airport.IATA + '</h3>');
             html.push('          </div>');
             if (airport.name) {
-              html.push('          <p class="text-blue-300 text-sm ml-9">' + airport.name + '</p>');
+              html.push('          <p class="text-gray-600 text-sm ml-9">' + airport.name + '</p>');
             }
             if (wx) {
-              html.push('          <div class="flex items-center gap-4 mt-2 ml-9 text-sm text-blue-300">');
+              html.push('          <div class="flex items-center gap-4 mt-2 ml-9 text-sm text-gray-600">');
               html.push('            <span>' + getWeatherDescription(wx.code) + '</span>');
               html.push('            <span>🌡️ ' + wx.temp + '°F</span>');
               html.push('            <span>💨 ' + wx.wind + ' mph</span>');
               html.push('          </div>');
             }
             html.push('        </div>');
-            html.push('        <div class="px-3 py-1 rounded-full text-xs font-semibold ' + statusBadge + '">' + statusText + '</div>');
+            html.push('        <div class="px-3 py-1 rounded text-xs font-semibold ' + statusBadge + '">' + statusText + '</div>');
             html.push('      </div>');
             
             if (airport.status) {
               html.push('      <div class="space-y-2 text-sm">');
               if (airport.status.avgDelay) {
-                html.push('        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">');
-                html.push('          <span class="text-blue-300">Average Delay</span>');
-                html.push('          <span class="font-semibold">' + airport.status.avgDelay + '</span>');
+                html.push('        <div class="flex justify-between items-center bg-gray-50 border border-gray-200 rounded p-3">');
+                html.push('          <span class="text-gray-600">Average Delay</span>');
+                html.push('          <span class="font-semibold text-gray-900">' + airport.status.avgDelay + '</span>');
                 html.push('        </div>');
               }
               if (airport.status.groundDelay) {
-                html.push('        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">');
-                html.push('          <span class="text-blue-300">Ground Delay</span>');
-                html.push('          <span class="font-semibold">' + airport.status.groundDelay + '</span>');
+                html.push('        <div class="flex justify-between items-center bg-gray-50 border border-gray-200 rounded p-3">');
+                html.push('          <span class="text-gray-600">Ground Delay</span>');
+                html.push('          <span class="font-semibold text-gray-900">' + airport.status.groundDelay + '</span>');
                 html.push('        </div>');
               }
               if (airport.status.groundStop) {
-                html.push('        <div class="flex justify-between items-center bg-red-950 rounded-lg p-3">');
-                html.push('          <span class="text-red-300">⛔ Ground Stop</span>');
-                html.push('          <span class="font-semibold">' + airport.status.groundStop + '</span>');
+                html.push('        <div class="flex justify-between items-center bg-red-50 border border-red-300 rounded p-3">');
+                html.push('          <span class="text-red-700">⛔ Ground Stop</span>');
+                html.push('          <span class="font-semibold text-red-900">' + airport.status.groundStop + '</span>');
                 html.push('        </div>');
               }
               if (airport.status.closureBegin) {
-                html.push('        <div class="bg-red-950 rounded-lg p-3">');
+                html.push('        <div class="bg-red-50 border border-red-300 rounded p-3">');
                 html.push('          <div class="flex justify-between items-center mb-1">');
-                html.push('            <span class="text-red-300">🚫 Closure Begin</span>');
-                html.push('            <span class="font-semibold">' + airport.status.closureBegin + '</span>');
+                html.push('            <span class="text-red-700">🚫 Closure Begin</span>');
+                html.push('            <span class="font-semibold text-red-900">' + airport.status.closureBegin + '</span>');
                 html.push('          </div>');
                 if (airport.status.closureEnd) {
                   html.push('          <div class="flex justify-between items-center">');
-                  html.push('            <span class="text-red-300">Closure End</span>');
-                  html.push('            <span class="font-semibold">' + airport.status.closureEnd + '</span>');
+                  html.push('            <span class="text-red-700">Closure End</span>');
+                  html.push('            <span class="font-semibold text-red-900">' + airport.status.closureEnd + '</span>');
                   html.push('          </div>');
                 }
                 html.push('        </div>');
               }
               if (airport.status.reason) {
-                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
-                html.push('          <span class="text-blue-300 text-xs">Reason: </span>');
-                html.push('          <span class="text-sm">' + airport.status.reason + '</span>');
+                html.push('        <div class="bg-gray-50 border border-gray-200 rounded p-3">');
+                html.push('          <span class="text-gray-600 text-xs">Reason: </span>');
+                html.push('          <span class="text-sm text-gray-900">' + airport.status.reason + '</span>');
                 html.push('        </div>');
               }
               html.push('      </div>');
@@ -614,17 +610,17 @@
       
       html.push('</div>');
       
-      html.push('<div class="fixed bottom-0 left-0 right-0 bg-blue-950 border-t border-blue-800 shadow-2xl">');
+      html.push('<div class="fixed bottom-0 left-0 right-0 bg-gray-100 border-t border-gray-200 shadow">');
       html.push('  <div class="max-w-4xl mx-auto px-6 py-4">');
       html.push('    <div class="flex items-center justify-between text-sm">');
-      html.push('      <div class="text-blue-300">');
+      html.push('      <div class="text-gray-600">');
       if (activeTab === 'airports') {
         html.push('        Showing ' + filteredAirports.length + ' of ' + airports.length + ' airports');
       } else {
         html.push('        Tracking ' + trackedFlights.length + ' flight' + (trackedFlights.length !== 1 ? 's' : ''));
       }
       html.push('      </div>');
-      html.push('      <div class="text-blue-400 text-xs">Auto-refresh: 60s</div>');
+      html.push('      <div class="text-gray-500 text-xs">Auto-refresh: 60s</div>');
       html.push('    </div>');
       html.push('  </div>');
       html.push('</div>');
