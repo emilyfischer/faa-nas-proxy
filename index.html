@@ -17,11 +17,8 @@
 
   <script type="module">
     const API_URL = 'https://faa-nas-proxy.vercel.app/api/nas-proxy';
-    
-    // Flight tracking API key - User needs to add their free key from aviationstack.com
     const FLIGHT_API_KEY = 'a9918f895f3cd554e7e4386460df8953';
     
-    // Airport coordinates for weather lookup
     const AIRPORT_COORDS = {
       'ORD': { lat: 41.9742, lon: -87.9073, name: "Chicago O'Hare" },
       'JFK': { lat: 40.6413, lon: -73.7781, name: "JFK New York" },
@@ -46,10 +43,10 @@
     let error = null;
     let filter = 'all';
     let searchQuery = '';
-    let favorites = ['LAX', 'JFK']; // Default favorites
+    let favorites = ['LAX', 'JFK'];
     let lastUpdate = null;
-    let activeTab = 'airports'; // 'airports' or 'flights'
-    let trackedFlights = []; // { airline, flightNumber, from, to, traveler }
+    let activeTab = 'airports';
+    let trackedFlights = [];
 
     function getSeverity(airport) {
       if (!airport.status) return 'normal';
@@ -93,7 +90,6 @@
         error = null;
         render();
         
-        console.log('Fetching from:', API_URL);
         const response = await fetch(API_URL);
         
         if (!response.ok) {
@@ -101,8 +97,6 @@
         }
         
         const text = await response.text();
-        console.log('Got XML data, length:', text.length);
-        
         const parser = new DOMParser();
         const xml = parser.parseFromString(text, 'text/xml');
         
@@ -113,7 +107,6 @@
         
         const airportData = [];
         
-        // Parse Airport Closures
         const closures = xml.querySelectorAll('Airport_Closure_List Airport');
         closures.forEach(airport => {
           const iata = airport.querySelector('ARPT')?.textContent || '';
@@ -131,7 +124,6 @@
           });
         });
         
-        // Parse Ground Delays
         const groundDelays = xml.querySelectorAll('Ground_Delay_List Ground_Delay');
         groundDelays.forEach(delay => {
           const iata = delay.querySelector('ARPT')?.textContent || '';
@@ -149,7 +141,6 @@
           });
         });
         
-        // Parse Ground Stops
         const groundStops = xml.querySelectorAll('Ground_Stop_List Ground_Stop');
         groundStops.forEach(stop => {
           const iata = stop.querySelector('ARPT')?.textContent || '';
@@ -167,7 +158,6 @@
           });
         });
         
-        // Parse General Delays
         const delays = xml.querySelectorAll('Arrival_Departure_Delay_List Delay');
         delays.forEach(delay => {
           const iata = delay.querySelector('ARPT')?.textContent || '';
@@ -186,9 +176,6 @@
           });
         });
         
-        console.log('Successfully parsed airports:', airportData.length);
-        
-        // Always include LAX and JFK even if no issues
         const baseAirports = ['LAX', 'JFK'];
         for (const iata of baseAirports) {
           if (!airportData.find(a => a.IATA === iata)) {
@@ -202,15 +189,12 @@
         
         airports = airportData;
         
-        // Fetch weather for all airports
         const uniqueIatas = [...new Set(airportData.map(a => a.IATA))];
-        console.log('Fetching weather for airports:', uniqueIatas);
         for (const iata of uniqueIatas) {
           if (AIRPORT_COORDS[iata]) {
             const wx = await fetchWeather(iata);
             if (wx) {
               weather[iata] = wx;
-              console.log(`Weather for ${iata}:`, wx);
             }
           }
         }
@@ -243,44 +227,41 @@
         to: to.toUpperCase(), 
         id: Date.now() 
       });
-      localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      try {
+        localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      } catch (e) {}
       render();
     }
 
     function removeFlight(id) {
       trackedFlights = trackedFlights.filter(f => f.id !== id);
-      localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      try {
+        localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      } catch (e) {}
       render();
     }
 
     async function lookupFlight(flightNumber) {
-      if (FLIGHT_API_KEY === 'YOUR_API_KEY_HERE') {
-        alert('⚠️ Flight lookup requires an API key!\n\nPlease:\n1. Get a free key at aviationstack.com\n2. Replace YOUR_API_KEY_HERE in the code\n3. Try again');
-        return null;
-      }
-
       try {
-        // Parse flight number - e.g., "UA125" -> airline: UA, flight: 125
         const match = flightNumber.match(/^([A-Z]{2})(\d+)$/i);
         if (!match) {
           alert('Please enter flight number like: UA125, AA184, DL456');
           return null;
         }
 
-        const [, airline, number] = match;
+        const flightCode = match[0].toUpperCase();
         
-        // Call AviationStack API
-        const url = `https://api.aviationstack.com/v1/flights?access_key=${FLIGHT_API_KEY}&flight_iata=${airline}${number}&limit=1`;
+        const url = `https://api.aviationstack.com/v1/flights?access_key=${FLIGHT_API_KEY}&flight_iata=${flightCode}&limit=1`;
         const response = await fetch(url);
         
         if (!response.ok) {
-          throw new Error('Flight lookup failed');
+          return null;
         }
         
         const data = await response.json();
         
         if (!data.data || data.data.length === 0) {
-          return null; // Flight not found
+          return null;
         }
         
         const flight = data.data[0];
@@ -295,36 +276,30 @@
     }
 
     async function showAddFlightForm() {
-      const traveler = prompt('Who is traveling? (e.g., Emily, Mom, Sister):');
+      const traveler = prompt('Who is traveling? (e.g., Emily, Mom, Sister)');
       if (!traveler) return;
       
-      const flightNumber = prompt('Enter flight number (e.g., UA125, AA184, DL456):');
+      const flightNumber = prompt('Enter flight number (e.g., UA125, AA184, DL456)');
       if (!flightNumber) return;
       
-      // Show loading message
-      const originalRender = render;
       loading = true;
       render();
       
-      // Try to look up the flight
       const flightInfo = await lookupFlight(flightNumber.trim());
       
       loading = false;
       
       if (flightInfo && flightInfo.from && flightInfo.to) {
-        // Found the flight automatically!
         addFlight(traveler, flightNumber.trim(), flightInfo.from, flightInfo.to);
         alert(`✅ Found flight: ${flightInfo.from} → ${flightInfo.to}`);
       } else {
-        // Couldn't find it - ask for route manually
-        alert('⚠️ Could not automatically find flight. Please enter route manually.');
-        const route = prompt('Enter route (e.g., LAX-JFK or LAX to JFK):');
+        alert('⚠️ Could not find flight. Please enter route manually.');
+        const route = prompt('Enter route (e.g., LAX-JFK or LAX to JFK)');
         if (!route) {
           render();
           return;
         }
         
-        // Parse route
         const routeParts = route.toUpperCase().split(/[-\s]+(?:TO\s+)?/);
         if (routeParts.length !== 2) {
           alert('Please enter route as: LAX-JFK or LAX to JFK');
@@ -332,8 +307,9 @@
           return;
         }
         
-        const [from, to] = routeParts;
-        addFlight(traveler, flightNumber.trim(), from.trim(), to.trim());
+        const from = routeParts[0].trim();
+        const to = routeParts[1].trim();
+        addFlight(traveler, flightNumber.trim(), from, to);
       }
       
       render();
@@ -341,7 +317,9 @@
 
     function getAirportStatus(iata) {
       const airport = airports.find(a => a.IATA === iata);
-      if (!airport || !airport.status) return { severity: 'normal', text: 'Normal Operations' };
+      if (!airport || !airport.status) {
+        return { severity: 'normal', text: 'Normal Operations', airport: null };
+      }
       
       const severity = getSeverity(airport);
       if (severity === 'severe') return { severity, text: '🔴 Severe Issues', airport };
@@ -354,7 +332,6 @@
       
       let filtered = [...airports];
       
-      // Apply severity filter
       if (filter === 'severe') {
         filtered = filtered.filter(a => getSeverity(a) === 'severe');
       } else if (filter === 'moderate') {
@@ -365,7 +342,6 @@
         filtered = filtered.filter(a => favorites.includes(a.IATA));
       }
       
-      // Apply search
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         filtered = filtered.filter(a => 
@@ -374,7 +350,6 @@
         );
       }
       
-      // Sort: favorites first, then by severity, then alphabetically
       filtered.sort((a, b) => {
         const aFav = favorites.includes(a.IATA);
         const bFav = favorites.includes(b.IATA);
@@ -397,332 +372,264 @@
       const severeCount = airports.filter(a => getSeverity(a) === 'severe').length;
       const moderateCount = airports.filter(a => getSeverity(a) === 'moderate').length;
 
-      document.getElementById('app').innerHTML = `
-        <!-- Header -->
-        <div class="bg-blue-950 shadow-lg">
-          <div class="max-w-4xl mx-auto px-6 py-6">
-            <div class="flex items-center justify-between mb-4">
-              <div>
-                <h1 class="text-3xl font-bold tracking-tight">Airport Status</h1>
-                <p class="text-blue-300 text-sm mt-1">
-                  ${lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : 'Loading...'}
-                </p>
-              </div>
-              <button
-                onclick="window.refreshData()"
-                ${loading ? 'disabled' : ''}
-                class="bg-blue-600 hover:bg-blue-500 p-3 rounded-full transition-all disabled:opacity-50"
-              >
-                <svg class="w-5 h-5 ${loading ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-            </div>
+      const html = [];
+      
+      html.push('<div class="bg-blue-950 shadow-lg">');
+      html.push('  <div class="max-w-4xl mx-auto px-6 py-6">');
+      html.push('    <div class="flex items-center justify-between mb-4">');
+      html.push('      <div>');
+      html.push('        <h1 class="text-3xl font-bold tracking-tight">Pamelas Travel Hub</h1>');
+      html.push('        <p class="text-blue-300 text-sm mt-1">');
+      html.push(lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : 'Loading...');
+      html.push('        </p>');
+      html.push('      </div>');
+      html.push('      <button onclick="window.refreshData()" class="bg-blue-600 hover:bg-blue-500 p-3 rounded-full transition-all">');
+      html.push('        <svg class="w-5 h-5' + (loading ? ' animate-spin' : '') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24">');
+      html.push('          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />');
+      html.push('        </svg>');
+      html.push('      </button>');
+      html.push('    </div>');
+      
+      html.push('    <div class="flex gap-2 mb-4">');
+      html.push('      <button onclick="window.setTab(\'airports\')" class="px-6 py-2 rounded-lg font-medium transition-all ' + (activeTab === 'airports' ? 'bg-blue-600 text-white' : 'bg-blue-900 text-blue-300 hover:bg-blue-800') + '">');
+      html.push('        🌐 Airport Status');
+      html.push('      </button>');
+      html.push('      <button onclick="window.setTab(\'flights\')" class="px-6 py-2 rounded-lg font-medium transition-all ' + (activeTab === 'flights' ? 'bg-blue-600 text-white' : 'bg-blue-900 text-blue-300 hover:bg-blue-800') + '">');
+      html.push('        ✈️ My Flights' + (trackedFlights.length > 0 ? ` (${trackedFlights.length})` : ''));
+      html.push('      </button>');
+      html.push('    </div>');
+      
+      if (activeTab === 'airports') {
+        html.push('    <div class="relative">');
+        html.push('      <input type="text" placeholder="Search by airport code or name..." value="' + searchQuery + '" oninput="window.setSearch(this.value)" class="w-full bg-blue-900 text-white placeholder-blue-400 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />');
+        html.push('      <svg class="absolute right-4 top-3.5 w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">');
+        html.push('        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />');
+        html.push('      </svg>');
+        html.push('    </div>');
+      }
+      
+      html.push('  </div>');
+      html.push('</div>');
+      
+      if (activeTab === 'airports') {
+        html.push('<div class="max-w-4xl mx-auto px-6 py-4">');
+        html.push('  <div class="flex gap-2 overflow-x-auto pb-2">');
+        html.push('    <button onclick="window.setFilter(\'all\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'all' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700') + '">All (' + airports.length + ')</button>');
+        if (favorites.length > 0) {
+          html.push('    <button onclick="window.setFilter(\'favorites\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'favorites' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700') + '">⭐ Favorites (' + favorites.length + ')</button>');
+        }
+        html.push('    <button onclick="window.setFilter(\'severe\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'severe' ? 'bg-red-500 text-white' : 'bg-blue-800 hover:bg-blue-700') + '">🔴 Severe (' + severeCount + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'moderate\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-blue-800 hover:bg-blue-700') + '">🟡 Moderate (' + moderateCount + ')</button>');
+        html.push('    <button onclick="window.setFilter(\'normal\')" class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ' + (filter === 'normal' ? 'bg-green-500 text-green-900' : 'bg-blue-800 hover:bg-blue-700') + '">🟢 Normal (' + (airports.length - severeCount - moderateCount) + ')</button>');
+        html.push('  </div>');
+        html.push('</div>');
+      }
+      
+      html.push('<div class="max-w-4xl mx-auto px-6 pb-24">');
+      
+      if (error) {
+        html.push('  <div class="bg-red-900 border border-red-700 rounded-2xl p-4 mb-4 flex items-center gap-3">');
+        html.push('    <span>' + error + '</span>');
+        html.push('  </div>');
+      }
+      
+      if (activeTab === 'flights') {
+        html.push('  <div class="mb-6">');
+        html.push('    <button onclick="window.showAddFlightForm()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-2">');
+        html.push('      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>');
+        html.push('      Add Flight to Track');
+        html.push('    </button>');
+        html.push('  </div>');
+        
+        if (trackedFlights.length === 0) {
+          html.push('  <div class="text-center py-12">');
+          html.push('    <svg class="w-16 h-16 mx-auto mb-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
+          html.push('    <h3 class="text-xl font-semibold mb-2">No Flights Tracked</h3>');
+          html.push('    <p class="text-blue-300">Click "Add Flight to Track" to monitor flights</p>');
+          html.push('  </div>');
+        } else {
+          html.push('  <div class="space-y-4">');
+          
+          trackedFlights.forEach(flight => {
+            const fromStatus = getAirportStatus(flight.from);
+            const toStatus = getAirportStatus(flight.to);
+            const fromWx = weather[flight.from];
+            const toWx = weather[flight.to];
+            const worstSeverity = fromStatus.severity === 'severe' || toStatus.severity === 'severe' ? 'severe' :
+                                 fromStatus.severity === 'moderate' || toStatus.severity === 'moderate' ? 'moderate' : 'normal';
             
-            <!-- Search Bar -->
-            <div class="relative">
-              <input
-                type="text"
-                placeholder="Search by airport code or name..."
-                value="${searchQuery}"
-                oninput="window.setSearch(this.value)"
-                class="w-full bg-blue-900 text-white placeholder-blue-400 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <svg class="absolute right-4 top-3.5 w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Filter Pills -->
-        <div class="max-w-4xl mx-auto px-6 py-4">
-          <div class="flex gap-2 overflow-x-auto pb-2">
-            <button
-              onclick="window.setFilter('all')"
-              class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'all' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700'
-              }"
-            >
-              All (${airports.length})
-            </button>
-            ${favorites.length > 0 ? `
-              <button
-                onclick="window.setFilter('favorites')"
-                class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                  filter === 'favorites' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700'
-                }"
-              >
-                ⭐ Favorites (${favorites.length})
-              </button>
-            ` : ''}
-            <button
-              onclick="window.setFilter('severe')"
-              class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'severe' ? 'bg-red-500 text-white' : 'bg-blue-800 hover:bg-blue-700'
-              }"
-            >
-              🔴 Severe (${severeCount})
-            </button>
-            <button
-              onclick="window.setFilter('moderate')"
-              class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-blue-800 hover:bg-blue-700'
-              }"
-            >
-              🟡 Moderate (${moderateCount})
-            </button>
-            <button
-              onclick="window.setFilter('normal')"
-              class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'normal' ? 'bg-green-500 text-green-900' : 'bg-blue-800 hover:bg-blue-700'
-              }"
-            >
-              🟢 Normal (${airports.length - severeCount - moderateCount})
-            </button>
-        ` : ''}
-        </div>
-
-        <!-- Content -->
-        <div class="max-w-4xl mx-auto px-6 pb-24">
-          ${error ? `
-            <div class="bg-red-900 border border-red-700 rounded-2xl p-4 mb-4 flex items-center gap-3">
-              <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>${error}</span>
-            </div>
-          ` : ''}
-
-          ${activeTab === 'flights' ? `
-            <!-- My Flights Tab -->
-            <div class="mb-6">
-              <button
-                onclick="window.showAddFlightForm()"
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Flight to Track
-              </button>
-            </div>
-
-            ${trackedFlights.length === 0 ? `
-              <div class="text-center py-12">
-                <svg class="w-16 h-16 mx-auto mb-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-                <h3 class="text-xl font-semibold mb-2">No Flights Tracked</h3>
-                <p class="text-blue-300">Click "Add Flight to Track" to monitor flights</p>
-              </div>
-            ` : `
-              <div class="space-y-4">
-                ${trackedFlights.map(flight => {
-                  const fromStatus = getAirportStatus(flight.from);
-                  const toStatus = getAirportStatus(flight.to);
-                  const fromWx = weather[flight.from];
-                  const toWx = weather[flight.to];
-                  const worstSeverity = fromStatus.severity === 'severe' || toStatus.severity === 'severe' ? 'severe' :
-                                       fromStatus.severity === 'moderate' || toStatus.severity === 'moderate' ? 'moderate' : 'normal';
-                  
-                  return `
-                    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-6 shadow-lg ${
-                      worstSeverity === 'severe' ? 'ring-2 ring-red-500' : 
-                      worstSeverity === 'moderate' ? 'ring-2 ring-yellow-500' : ''
-                    }">
-                      <div class="flex items-start justify-between mb-4">
-                        <div>
-                          <h3 class="text-2xl font-bold">${flight.flightNumber}</h3>
-                          <p class="text-blue-300 text-sm mt-1">👤 ${flight.traveler}</p>
-                        </div>
-                        <button
-                          onclick="window.removeFlight(${flight.id})"
-                          class="text-red-400 hover:text-red-300 text-sm font-semibold px-3 py-1 rounded-lg hover:bg-red-900"
-                        >
-                          ✕ Remove
-                        </button>
-                      </div>
-
-                      <!-- Route -->
-                      <div class="flex items-center gap-4 mb-4">
-                        <div class="flex-1 bg-blue-950 rounded-lg p-4">
-                          <div class="text-xs text-blue-400 mb-1">FROM</div>
-                          <div class="text-2xl font-bold">${flight.from}</div>
-                          <div class="mt-2 text-sm ${
-                            fromStatus.severity === 'severe' ? 'text-red-400' :
-                            fromStatus.severity === 'moderate' ? 'text-yellow-400' :
-                            'text-green-400'
-                          }">${fromStatus.text}</div>
-                          ${fromWx ? `
-                            <div class="text-xs text-blue-300 mt-2">
-                              ${getWeatherDescription(fromWx.code)} • ${fromWx.temp}°F • ${fromWx.wind} mph
-                            </div>
-                          ` : ''}
-                        </div>
-                        <div class="text-3xl">✈️</div>
-                        <div class="flex-1 bg-blue-950 rounded-lg p-4">
-                          <div class="text-xs text-blue-400 mb-1">TO</div>
-                          <div class="text-2xl font-bold">${flight.to}</div>
-                          <div class="mt-2 text-sm ${
-                            toStatus.severity === 'severe' ? 'text-red-400' :
-                            toStatus.severity === 'moderate' ? 'text-yellow-400' :
-                            'text-green-400'
-                          }">${toStatus.text}</div>
-                          ${toWx ? `
-                            <div class="text-xs text-blue-300 mt-2">
-                              ${getWeatherDescription(toWx.code)} • ${toWx.temp}°F • ${toWx.wind} mph
-                            </div>
-                          ` : ''}
-                        </div>
-                      </div>
-
-                      <!-- Detailed Status -->
-                      ${fromStatus.airport?.status || toStatus.airport?.status ? `
-                        <div class="space-y-2 text-sm">
-                          ${fromStatus.airport?.status?.reason ? `
-                            <div class="bg-blue-950 rounded-lg p-3">
-                              <span class="text-blue-300 font-semibold">${flight.from}: </span>
-                              <span>${fromStatus.airport.status.reason}</span>
-                            </div>
-                          ` : ''}
-                          ${toStatus.airport?.status?.reason ? `
-                            <div class="bg-blue-950 rounded-lg p-3">
-                              <span class="text-blue-300 font-semibold">${flight.to}: </span>
-                              <span>${toStatus.airport.status.reason}</span>
-                            </div>
-                          ` : ''}
-                        </div>
-                      ` : ''}
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            `}
-          ` : `
-            <!-- Airport Status Tab -->`
-
-          ${loading && airports.length === 0 ? `
-            <div class="flex items-center justify-center py-12">
-              <svg class="w-8 h-8 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </div>
-          ` : filteredAirports.length === 0 ? `
-            <div class="text-center py-12">
-              <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-              <p class="text-blue-300 text-lg">No airports found</p>
-              ${searchQuery ? `<p class="text-blue-400 text-sm mt-2">Try a different search term</p>` : ''}
-            </div>
-          ` : `
-            <div class="space-y-3">
-              ${filteredAirports.map((airport) => {
-                const severity = getSeverity(airport);
-                const isFavorite = favorites.includes(airport.IATA);
-                const wx = weather[airport.IATA];
-                
-                return `
-                <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all ${
-                  severity === 'severe' ? 'ring-2 ring-red-500' : 
-                  severity === 'moderate' ? 'ring-2 ring-yellow-500' : ''
-                }">
-                  <div class="flex items-start justify-between mb-3">
-                    <div class="flex-1">
-                      <div class="flex items-center gap-2">
-                        <button
-                          onclick="window.toggleFavorite('${airport.IATA}')"
-                          class="text-2xl hover:scale-110 transition-transform"
-                        >
-                          ${isFavorite ? '⭐' : '☆'}
-                        </button>
-                        <h3 class="text-2xl font-bold">${airport.IATA}</h3>
-                      </div>
-                      ${airport.name ? `<p class="text-blue-300 text-sm ml-9">${airport.name}</p>` : ''}
-                      
-                      ${wx ? `
-                        <div class="flex items-center gap-4 mt-2 ml-9 text-sm text-blue-300">
-                          <span>${getWeatherDescription(wx.code)}</span>
-                          <span>🌡️ ${wx.temp}°F</span>
-                          <span>💨 ${wx.wind} mph</span>
-                        </div>
-                      ` : ''}
-                    </div>
-                    <div class="px-3 py-1 rounded-full text-xs font-semibold ${
-                      severity === 'severe'
-                        ? 'bg-red-500 text-white'
-                        : severity === 'moderate'
-                        ? 'bg-yellow-500 text-yellow-900'
-                        : 'bg-green-500 text-green-900'
-                    }">
-                      ${severity === 'severe' ? '🔴 SEVERE' : 
-                        severity === 'moderate' ? '🟡 DELAYS' : '🟢 NORMAL'}
-                    </div>
-                  </div>
-
-                  ${airport.status ? `
-                    <div class="space-y-2 text-sm">
-                      ${airport.status.avgDelay ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">
-                          <span class="text-blue-300">Average Delay</span>
-                          <span class="font-semibold">${airport.status.avgDelay}</span>
-                        </div>
-                      ` : ''}
-                      ${airport.status.groundDelay ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">
-                          <span class="text-blue-300">Ground Delay</span>
-                          <span class="font-semibold">${airport.status.groundDelay}</span>
-                        </div>
-                      ` : ''}
-                      ${airport.status.groundStop ? `
-                        <div class="flex justify-between items-center bg-red-950 rounded-lg p-3">
-                          <span class="text-red-300">⛔ Ground Stop</span>
-                          <span class="font-semibold">${airport.status.groundStop}</span>
-                        </div>
-                      ` : ''}
-                      ${airport.status.closureBegin ? `
-                        <div class="bg-red-950 rounded-lg p-3">
-                          <div class="flex justify-between items-center mb-1">
-                            <span class="text-red-300">🚫 Closure Begin</span>
-                            <span class="font-semibold">${airport.status.closureBegin}</span>
-                          </div>
-                          ${airport.status.closureEnd ? `
-                            <div class="flex justify-between items-center">
-                              <span class="text-red-300">Closure End</span>
-                              <span class="font-semibold">${airport.status.closureEnd}</span>
-                            </div>
-                          ` : ''}
-                        </div>
-                      ` : ''}
-                      ${airport.status.reason ? `
-                        <div class="bg-blue-950 rounded-lg p-3">
-                          <span class="text-blue-300 text-xs">Reason: </span>
-                          <span class="text-sm">${airport.status.reason}</span>
-                        </div>
-                      ` : ''}
-                    </div>
-                  ` : ''}
-                </div>
-              `}).join('')}
-            </div>
-          `}
-        </div>
-
-        <!-- Bottom Action Bar -->
-        <div class="fixed bottom-0 left-0 right-0 bg-blue-950 border-t border-blue-800 shadow-2xl">
-          <div class="max-w-4xl mx-auto px-6 py-4">
-            <div class="flex items-center justify-between text-sm">
-              <div class="text-blue-300">
-                Showing ${filteredAirports.length} of ${airports.length} airports
-              </div>
-              <div class="text-blue-400 text-xs">
-                Auto-refresh: 60s
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
+            const ringClass = worstSeverity === 'severe' ? 'ring-2 ring-red-500' : 
+                            worstSeverity === 'moderate' ? 'ring-2 ring-yellow-500' : '';
+            
+            html.push('    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-6 shadow-lg ' + ringClass + '">');
+            html.push('      <div class="flex items-start justify-between mb-4">');
+            html.push('        <div>');
+            html.push('          <h3 class="text-2xl font-bold">' + flight.flightNumber + '</h3>');
+            html.push('          <p class="text-blue-300 text-sm mt-1">👤 ' + flight.traveler + '</p>');
+            html.push('        </div>');
+            html.push('        <button onclick="window.removeFlight(' + flight.id + ')" class="text-red-400 hover:text-red-300 text-sm font-semibold px-3 py-1 rounded-lg hover:bg-red-900">✕ Remove</button>');
+            html.push('      </div>');
+            
+            html.push('      <div class="flex items-center gap-4 mb-4">');
+            html.push('        <div class="flex-1 bg-blue-950 rounded-lg p-4">');
+            html.push('          <div class="text-xs text-blue-400 mb-1">FROM</div>');
+            html.push('          <div class="text-2xl font-bold">' + flight.from + '</div>');
+            const fromColor = fromStatus.severity === 'severe' ? 'text-red-400' : fromStatus.severity === 'moderate' ? 'text-yellow-400' : 'text-green-400';
+            html.push('          <div class="mt-2 text-sm ' + fromColor + '">' + fromStatus.text + '</div>');
+            if (fromWx) {
+              html.push('          <div class="text-xs text-blue-300 mt-2">' + getWeatherDescription(fromWx.code) + ' • ' + fromWx.temp + '°F • ' + fromWx.wind + ' mph</div>');
+            }
+            html.push('        </div>');
+            html.push('        <div class="text-3xl">✈️</div>');
+            html.push('        <div class="flex-1 bg-blue-950 rounded-lg p-4">');
+            html.push('          <div class="text-xs text-blue-400 mb-1">TO</div>');
+            html.push('          <div class="text-2xl font-bold">' + flight.to + '</div>');
+            const toColor = toStatus.severity === 'severe' ? 'text-red-400' : toStatus.severity === 'moderate' ? 'text-yellow-400' : 'text-green-400';
+            html.push('          <div class="mt-2 text-sm ' + toColor + '">' + toStatus.text + '</div>');
+            if (toWx) {
+              html.push('          <div class="text-xs text-blue-300 mt-2">' + getWeatherDescription(toWx.code) + ' • ' + toWx.temp + '°F • ' + toWx.wind + ' mph</div>');
+            }
+            html.push('        </div>');
+            html.push('      </div>');
+            
+            if ((fromStatus.airport && fromStatus.airport.status) || (toStatus.airport && toStatus.airport.status)) {
+              html.push('      <div class="space-y-2 text-sm">');
+              if (fromStatus.airport && fromStatus.airport.status && fromStatus.airport.status.reason) {
+                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
+                html.push('          <span class="text-blue-300 font-semibold">' + flight.from + ': </span>');
+                html.push('          <span>' + fromStatus.airport.status.reason + '</span>');
+                html.push('        </div>');
+              }
+              if (toStatus.airport && toStatus.airport.status && toStatus.airport.status.reason) {
+                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
+                html.push('          <span class="text-blue-300 font-semibold">' + flight.to + ': </span>');
+                html.push('          <span>' + toStatus.airport.status.reason + '</span>');
+                html.push('        </div>');
+              }
+              html.push('      </div>');
+            }
+            
+            html.push('    </div>');
+          });
+          
+          html.push('  </div>');
+        }
+      } else {
+        if (loading && airports.length === 0) {
+          html.push('  <div class="flex items-center justify-center py-12">');
+          html.push('    <svg class="w-8 h-8 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>');
+          html.push('  </div>');
+        } else if (filteredAirports.length === 0) {
+          html.push('  <div class="text-center py-12">');
+          html.push('    <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>');
+          html.push('    <p class="text-blue-300 text-lg">No airports found</p>');
+          if (searchQuery) {
+            html.push('    <p class="text-blue-400 text-sm mt-2">Try a different search term</p>');
+          }
+          html.push('  </div>');
+        } else {
+          html.push('  <div class="space-y-3">');
+          
+          filteredAirports.forEach(airport => {
+            const severity = getSeverity(airport);
+            const isFavorite = favorites.includes(airport.IATA);
+            const wx = weather[airport.IATA];
+            
+            const ringClass = severity === 'severe' ? 'ring-2 ring-red-500' : severity === 'moderate' ? 'ring-2 ring-yellow-500' : '';
+            const statusBadge = severity === 'severe' ? 'bg-red-500 text-white' : severity === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-green-500 text-green-900';
+            const statusText = severity === 'severe' ? '🔴 SEVERE' : severity === 'moderate' ? '🟡 DELAYS' : '🟢 NORMAL';
+            
+            html.push('    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all ' + ringClass + '">');
+            html.push('      <div class="flex items-start justify-between mb-3">');
+            html.push('        <div class="flex-1">');
+            html.push('          <div class="flex items-center gap-2">');
+            html.push('            <button onclick="window.toggleFavorite(\'' + airport.IATA + '\')" class="text-2xl hover:scale-110 transition-transform">');
+            html.push(isFavorite ? '⭐' : '☆');
+            html.push('            </button>');
+            html.push('            <h3 class="text-2xl font-bold">' + airport.IATA + '</h3>');
+            html.push('          </div>');
+            if (airport.name) {
+              html.push('          <p class="text-blue-300 text-sm ml-9">' + airport.name + '</p>');
+            }
+            if (wx) {
+              html.push('          <div class="flex items-center gap-4 mt-2 ml-9 text-sm text-blue-300">');
+              html.push('            <span>' + getWeatherDescription(wx.code) + '</span>');
+              html.push('            <span>🌡️ ' + wx.temp + '°F</span>');
+              html.push('            <span>💨 ' + wx.wind + ' mph</span>');
+              html.push('          </div>');
+            }
+            html.push('        </div>');
+            html.push('        <div class="px-3 py-1 rounded-full text-xs font-semibold ' + statusBadge + '">' + statusText + '</div>');
+            html.push('      </div>');
+            
+            if (airport.status) {
+              html.push('      <div class="space-y-2 text-sm">');
+              if (airport.status.avgDelay) {
+                html.push('        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">');
+                html.push('          <span class="text-blue-300">Average Delay</span>');
+                html.push('          <span class="font-semibold">' + airport.status.avgDelay + '</span>');
+                html.push('        </div>');
+              }
+              if (airport.status.groundDelay) {
+                html.push('        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">');
+                html.push('          <span class="text-blue-300">Ground Delay</span>');
+                html.push('          <span class="font-semibold">' + airport.status.groundDelay + '</span>');
+                html.push('        </div>');
+              }
+              if (airport.status.groundStop) {
+                html.push('        <div class="flex justify-between items-center bg-red-950 rounded-lg p-3">');
+                html.push('          <span class="text-red-300">⛔ Ground Stop</span>');
+                html.push('          <span class="font-semibold">' + airport.status.groundStop + '</span>');
+                html.push('        </div>');
+              }
+              if (airport.status.closureBegin) {
+                html.push('        <div class="bg-red-950 rounded-lg p-3">');
+                html.push('          <div class="flex justify-between items-center mb-1">');
+                html.push('            <span class="text-red-300">🚫 Closure Begin</span>');
+                html.push('            <span class="font-semibold">' + airport.status.closureBegin + '</span>');
+                html.push('          </div>');
+                if (airport.status.closureEnd) {
+                  html.push('          <div class="flex justify-between items-center">');
+                  html.push('            <span class="text-red-300">Closure End</span>');
+                  html.push('            <span class="font-semibold">' + airport.status.closureEnd + '</span>');
+                  html.push('          </div>');
+                }
+                html.push('        </div>');
+              }
+              if (airport.status.reason) {
+                html.push('        <div class="bg-blue-950 rounded-lg p-3">');
+                html.push('          <span class="text-blue-300 text-xs">Reason: </span>');
+                html.push('          <span class="text-sm">' + airport.status.reason + '</span>');
+                html.push('        </div>');
+              }
+              html.push('      </div>');
+            }
+            
+            html.push('    </div>');
+          });
+          
+          html.push('  </div>');
+        }
+      }
+      
+      html.push('</div>');
+      
+      html.push('<div class="fixed bottom-0 left-0 right-0 bg-blue-950 border-t border-blue-800 shadow-2xl">');
+      html.push('  <div class="max-w-4xl mx-auto px-6 py-4">');
+      html.push('    <div class="flex items-center justify-between text-sm">');
+      html.push('      <div class="text-blue-300">');
+      if (activeTab === 'airports') {
+        html.push('        Showing ' + filteredAirports.length + ' of ' + airports.length + ' airports');
+      } else {
+        html.push('        Tracking ' + trackedFlights.length + ' flight' + (trackedFlights.length !== 1 ? 's' : ''));
+      }
+      html.push('      </div>');
+      html.push('      <div class="text-blue-400 text-xs">Auto-refresh: 60s</div>');
+      html.push('    </div>');
+      html.push('  </div>');
+      html.push('</div>');
+      
+      document.getElementById('app').innerHTML = html.join('');
     }
 
     window.refreshData = fetchNASData;
@@ -735,11 +642,21 @@
       render();
     };
     window.toggleFavorite = toggleFavorite;
+    window.setTab = (tab) => {
+      activeTab = tab;
+      render();
+    };
+    window.showAddFlightForm = showAddFlightForm;
+    window.removeFlight = removeFlight;
 
-    // Initial fetch
+    try {
+      const saved = localStorage.getItem('trackedFlights');
+      if (saved) {
+        trackedFlights = JSON.parse(saved);
+      }
+    } catch (e) {}
+
     fetchNASData();
-
-    // Auto-refresh every 60 seconds
     setInterval(fetchNASData, 60000);
   </script>
 </body>
