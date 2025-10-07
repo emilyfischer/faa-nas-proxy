@@ -18,11 +18,69 @@
   <script type="module">
     const API_URL = 'https://faa-nas-proxy.vercel.app/api/nas-proxy';
     
+    // Airport coordinates for weather lookup
+    const AIRPORT_COORDS = {
+      'ORD': { lat: 41.9742, lon: -87.9073, name: "Chicago O'Hare" },
+      'JFK': { lat: 40.6413, lon: -73.7781, name: "JFK New York" },
+      'LAX': { lat: 33.9416, lon: -118.4085, name: "Los Angeles" },
+      'ATL': { lat: 33.6407, lon: -84.4277, name: "Atlanta" },
+      'DFW': { lat: 32.8998, lon: -97.0403, name: "Dallas/Fort Worth" },
+      'DEN': { lat: 39.8561, lon: -104.6737, name: "Denver" },
+      'SFO': { lat: 37.6213, lon: -122.3790, name: "San Francisco" },
+      'LAS': { lat: 36.0840, lon: -115.1537, name: "Las Vegas" },
+      'PHX': { lat: 33.4352, lon: -112.0101, name: "Phoenix" },
+      'MIA': { lat: 25.7959, lon: -80.2870, name: "Miami" },
+      'BOS': { lat: 42.3656, lon: -71.0096, name: "Boston" },
+      'SEA': { lat: 47.4502, lon: -122.3088, name: "Seattle" },
+      'EWR': { lat: 40.6895, lon: -74.1745, name: "Newark" },
+      'MCO': { lat: 28.4312, lon: -81.3081, name: "Orlando" },
+      'CLT': { lat: 35.2144, lon: -80.9473, name: "Charlotte" }
+    };
+    
     let airports = [];
+    let weather = {};
     let loading = true;
     let error = null;
     let filter = 'all';
+    let searchQuery = '';
+    let favorites = [];
     let lastUpdate = null;
+
+    function getSeverity(airport) {
+      if (!airport.status) return 'normal';
+      if (airport.status.closureBegin || airport.status.groundStop) return 'severe';
+      if (airport.status.groundDelay || airport.status.avgDelay) return 'moderate';
+      return 'normal';
+    }
+
+    async function fetchWeather(iata) {
+      const coords = AIRPORT_COORDS[iata];
+      if (!coords) return null;
+      
+      try {
+        const response = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph`
+        );
+        const data = await response.json();
+        return {
+          temp: Math.round(data.current.temperature_2m),
+          wind: Math.round(data.current.wind_speed_10m),
+          code: data.current.weather_code
+        };
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function getWeatherDescription(code) {
+      if (code === 0) return '☀️ Clear';
+      if (code <= 3) return '⛅ Partly Cloudy';
+      if (code <= 49) return '🌫️ Fog';
+      if (code <= 69) return '🌧️ Rain';
+      if (code <= 79) return '🌨️ Snow';
+      if (code <= 99) return '⛈️ Thunderstorm';
+      return '🌤️ Unknown';
+    }
 
     async function fetchNASData() {
       try {
@@ -53,11 +111,10 @@
         // Parse Airport Closures
         const closures = xml.querySelectorAll('Airport_Closure_List Airport');
         closures.forEach(airport => {
+          const iata = airport.querySelector('ARPT')?.textContent || '';
           airportData.push({
-            IATA: airport.querySelector('ARPT')?.textContent || '',
-            name: '',
-            city: '',
-            state: '',
+            IATA: iata,
+            name: AIRPORT_COORDS[iata]?.name || '',
             status: {
               avgDelay: null,
               groundDelay: null,
@@ -72,11 +129,10 @@
         // Parse Ground Delays
         const groundDelays = xml.querySelectorAll('Ground_Delay_List Ground_Delay');
         groundDelays.forEach(delay => {
+          const iata = delay.querySelector('ARPT')?.textContent || '';
           airportData.push({
-            IATA: delay.querySelector('ARPT')?.textContent || '',
-            name: '',
-            city: '',
-            state: '',
+            IATA: iata,
+            name: AIRPORT_COORDS[iata]?.name || '',
             status: {
               avgDelay: delay.querySelector('Avg')?.textContent || null,
               groundDelay: delay.querySelector('Reason')?.textContent || null,
@@ -91,11 +147,10 @@
         // Parse Ground Stops
         const groundStops = xml.querySelectorAll('Ground_Stop_List Ground_Stop');
         groundStops.forEach(stop => {
+          const iata = stop.querySelector('ARPT')?.textContent || '';
           airportData.push({
-            IATA: stop.querySelector('ARPT')?.textContent || '',
-            name: '',
-            city: '',
-            state: '',
+            IATA: iata,
+            name: AIRPORT_COORDS[iata]?.name || '',
             status: {
               avgDelay: null,
               groundDelay: null,
@@ -110,13 +165,13 @@
         // Parse General Delays
         const delays = xml.querySelectorAll('Arrival_Departure_Delay_List Delay');
         delays.forEach(delay => {
+          const iata = delay.querySelector('ARPT')?.textContent || '';
           airportData.push({
-            IATA: delay.querySelector('ARPT')?.textContent || '',
-            name: delay.querySelector('Name')?.textContent || '',
-            city: '',
-            state: '',
+            IATA: iata,
+            name: delay.querySelector('Name')?.textContent || AIRPORT_COORDS[iata]?.name || '',
             status: {
-              avgDelay: delay.querySelector('Min')?.textContent ? `${delay.querySelector('Min')?.textContent} - ${delay.querySelector('Max')?.textContent}` : null,
+              avgDelay: delay.querySelector('Min')?.textContent ? 
+                `${delay.querySelector('Min')?.textContent} - ${delay.querySelector('Max')?.textContent}` : null,
               groundDelay: null,
               groundStop: null,
               closureBegin: null,
@@ -128,6 +183,15 @@
         
         console.log('Successfully parsed airports:', airportData.length);
         airports = airportData;
+        
+        // Fetch weather for airports
+        const uniqueIatas = [...new Set(airportData.map(a => a.IATA))];
+        for (const iata of uniqueIatas) {
+          if (AIRPORT_COORDS[iata]) {
+            weather[iata] = await fetchWeather(iata);
+          }
+        }
+        
         lastUpdate = new Date();
         loading = false;
         render();
@@ -139,33 +203,70 @@
       }
     }
 
+    function toggleFavorite(iata) {
+      if (favorites.includes(iata)) {
+        favorites = favorites.filter(f => f !== iata);
+      } else {
+        favorites.push(iata);
+      }
+      render();
+    }
+
     function getFilteredAirports() {
       if (!airports.length) return [];
       
-      return airports.filter(airport => {
-        if (filter === 'all') return true;
-        if (filter === 'delays') {
-          return airport.status?.avgDelay || airport.status?.groundDelay || airport.status?.groundStop;
-        }
-        if (filter === 'closures') {
-          return airport.status?.closureBegin;
-        }
-        return true;
+      let filtered = [...airports];
+      
+      // Apply severity filter
+      if (filter === 'severe') {
+        filtered = filtered.filter(a => getSeverity(a) === 'severe');
+      } else if (filter === 'moderate') {
+        filtered = filtered.filter(a => getSeverity(a) === 'moderate');
+      } else if (filter === 'normal') {
+        filtered = filtered.filter(a => getSeverity(a) === 'normal');
+      } else if (filter === 'favorites') {
+        filtered = filtered.filter(a => favorites.includes(a.IATA));
+      }
+      
+      // Apply search
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(a => 
+          a.IATA.toLowerCase().includes(query) || 
+          a.name.toLowerCase().includes(query)
+        );
+      }
+      
+      // Sort: favorites first, then by severity, then alphabetically
+      filtered.sort((a, b) => {
+        const aFav = favorites.includes(a.IATA);
+        const bFav = favorites.includes(b.IATA);
+        if (aFav && !bFav) return -1;
+        if (!aFav && bFav) return 1;
+        
+        const severityOrder = { severe: 0, moderate: 1, normal: 2 };
+        const aSev = severityOrder[getSeverity(a)];
+        const bSev = severityOrder[getSeverity(b)];
+        if (aSev !== bSev) return aSev - bSev;
+        
+        return a.IATA.localeCompare(b.IATA);
       });
+      
+      return filtered;
     }
 
     function render() {
       const filteredAirports = getFilteredAirports();
-      const delayCount = airports.filter(a => a.status?.avgDelay || a.status?.groundDelay).length;
-      const closureCount = airports.filter(a => a.status?.closureBegin).length;
+      const severeCount = airports.filter(a => getSeverity(a) === 'severe').length;
+      const moderateCount = airports.filter(a => getSeverity(a) === 'moderate').length;
 
       document.getElementById('app').innerHTML = `
         <!-- Header -->
         <div class="bg-blue-950 shadow-lg">
           <div class="max-w-4xl mx-auto px-6 py-6">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between mb-4">
               <div>
-                <h1 class="text-3xl font-bold tracking-tight">NAS Status</h1>
+                <h1 class="text-3xl font-bold tracking-tight">Airport Status</h1>
                 <p class="text-blue-300 text-sm mt-1">
                   ${lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : 'Loading...'}
                 </p>
@@ -180,6 +281,20 @@
                 </svg>
               </button>
             </div>
+            
+            <!-- Search Bar -->
+            <div class="relative">
+              <input
+                type="text"
+                placeholder="Search by airport code or name..."
+                value="${searchQuery}"
+                oninput="window.setSearch(this.value)"
+                class="w-full bg-blue-900 text-white placeholder-blue-400 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <svg class="absolute right-4 top-3.5 w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -189,32 +304,44 @@
             <button
               onclick="window.setFilter('all')"
               class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'all'
-                  ? 'bg-white text-blue-900'
-                  : 'bg-blue-800 hover:bg-blue-700'
+                filter === 'all' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700'
               }"
             >
               All (${airports.length})
             </button>
+            ${favorites.length > 0 ? `
+              <button
+                onclick="window.setFilter('favorites')"
+                class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
+                  filter === 'favorites' ? 'bg-white text-blue-900' : 'bg-blue-800 hover:bg-blue-700'
+                }"
+              >
+                ⭐ Favorites (${favorites.length})
+              </button>
+            ` : ''}
             <button
-              onclick="window.setFilter('delays')"
+              onclick="window.setFilter('severe')"
               class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'delays'
-                  ? 'bg-white text-blue-900'
-                  : 'bg-blue-800 hover:bg-blue-700'
+                filter === 'severe' ? 'bg-red-500 text-white' : 'bg-blue-800 hover:bg-blue-700'
               }"
             >
-              Delays (${delayCount})
+              🔴 Severe (${severeCount})
             </button>
             <button
-              onclick="window.setFilter('closures')"
+              onclick="window.setFilter('moderate')"
               class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                filter === 'closures'
-                  ? 'bg-white text-blue-900'
-                  : 'bg-blue-800 hover:bg-blue-700'
+                filter === 'moderate' ? 'bg-yellow-500 text-yellow-900' : 'bg-blue-800 hover:bg-blue-700'
               }"
             >
-              Closures (${closureCount})
+              🟡 Moderate (${moderateCount})
+            </button>
+            <button
+              onclick="window.setFilter('normal')"
+              class="px-5 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
+                filter === 'normal' ? 'bg-green-500 text-green-900' : 'bg-blue-800 hover:bg-blue-700'
+              }"
+            >
+              🟢 Normal (${airports.length - severeCount - moderateCount})
             </button>
           </div>
         </div>
@@ -242,65 +369,89 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
               <p class="text-blue-300 text-lg">No airports found</p>
+              ${searchQuery ? `<p class="text-blue-400 text-sm mt-2">Try a different search term</p>` : ''}
             </div>
           ` : `
             <div class="space-y-3">
-              ${filteredAirports.map((airport) => `
-                <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all">
+              ${filteredAirports.map((airport) => {
+                const severity = getSeverity(airport);
+                const isFavorite = favorites.includes(airport.IATA);
+                const wx = weather[airport.IATA];
+                
+                return `
+                <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all ${
+                  severity === 'severe' ? 'ring-2 ring-red-500' : 
+                  severity === 'moderate' ? 'ring-2 ring-yellow-500' : ''
+                }">
                   <div class="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 class="text-xl font-bold">${airport.IATA || 'N/A'}</h3>
-                      ${airport.name ? `<p class="text-blue-300 text-sm">${airport.name}</p>` : ''}
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <button
+                          onclick="window.toggleFavorite('${airport.IATA}')"
+                          class="text-2xl hover:scale-110 transition-transform"
+                        >
+                          ${isFavorite ? '⭐' : '☆'}
+                        </button>
+                        <h3 class="text-2xl font-bold">${airport.IATA}</h3>
+                      </div>
+                      ${airport.name ? `<p class="text-blue-300 text-sm ml-9">${airport.name}</p>` : ''}
+                      
+                      ${wx ? `
+                        <div class="flex items-center gap-4 mt-2 ml-9 text-sm text-blue-300">
+                          <span>${getWeatherDescription(wx.code)}</span>
+                          <span>🌡️ ${wx.temp}°F</span>
+                          <span>💨 ${wx.wind} mph</span>
+                        </div>
+                      ` : ''}
                     </div>
                     <div class="px-3 py-1 rounded-full text-xs font-semibold ${
-                      airport.status?.avgDelay || airport.status?.groundDelay
-                        ? 'bg-yellow-500 text-yellow-900'
-                        : airport.status?.closureBegin
+                      severity === 'severe'
                         ? 'bg-red-500 text-white'
+                        : severity === 'moderate'
+                        ? 'bg-yellow-500 text-yellow-900'
                         : 'bg-green-500 text-green-900'
                     }">
-                      ${airport.status?.avgDelay || airport.status?.groundDelay
-                        ? 'DELAYED'
-                        : airport.status?.closureBegin
-                        ? 'CLOSED'
-                        : 'NORMAL'}
+                      ${severity === 'severe' ? '🔴 SEVERE' : 
+                        severity === 'moderate' ? '🟡 DELAYS' : '🟢 NORMAL'}
                     </div>
                   </div>
 
                   ${airport.status ? `
                     <div class="space-y-2 text-sm">
                       ${airport.status.avgDelay ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-2">
+                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">
                           <span class="text-blue-300">Average Delay</span>
                           <span class="font-semibold">${airport.status.avgDelay}</span>
                         </div>
                       ` : ''}
                       ${airport.status.groundDelay ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-2">
+                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-3">
                           <span class="text-blue-300">Ground Delay</span>
                           <span class="font-semibold">${airport.status.groundDelay}</span>
                         </div>
                       ` : ''}
                       ${airport.status.groundStop ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-2">
-                          <span class="text-blue-300">Ground Stop</span>
+                        <div class="flex justify-between items-center bg-red-950 rounded-lg p-3">
+                          <span class="text-red-300">⛔ Ground Stop</span>
                           <span class="font-semibold">${airport.status.groundStop}</span>
                         </div>
                       ` : ''}
                       ${airport.status.closureBegin ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-2">
-                          <span class="text-blue-300">Closure Begin</span>
-                          <span class="font-semibold">${airport.status.closureBegin}</span>
-                        </div>
-                      ` : ''}
-                      ${airport.status.closureEnd ? `
-                        <div class="flex justify-between items-center bg-blue-950 rounded-lg p-2">
-                          <span class="text-blue-300">Closure End</span>
-                          <span class="font-semibold">${airport.status.closureEnd}</span>
+                        <div class="bg-red-950 rounded-lg p-3">
+                          <div class="flex justify-between items-center mb-1">
+                            <span class="text-red-300">🚫 Closure Begin</span>
+                            <span class="font-semibold">${airport.status.closureBegin}</span>
+                          </div>
+                          ${airport.status.closureEnd ? `
+                            <div class="flex justify-between items-center">
+                              <span class="text-red-300">Closure End</span>
+                              <span class="font-semibold">${airport.status.closureEnd}</span>
+                            </div>
+                          ` : ''}
                         </div>
                       ` : ''}
                       ${airport.status.reason ? `
-                        <div class="bg-blue-950 rounded-lg p-2">
+                        <div class="bg-blue-950 rounded-lg p-3">
                           <span class="text-blue-300 text-xs">Reason: </span>
                           <span class="text-sm">${airport.status.reason}</span>
                         </div>
@@ -308,7 +459,7 @@
                     </div>
                   ` : ''}
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           `}
         </div>
@@ -334,6 +485,11 @@
       filter = newFilter;
       render();
     };
+    window.setSearch = (query) => {
+      searchQuery = query;
+      render();
+    };
+    window.toggleFavorite = toggleFavorite;
 
     // Initial fetch
     fetchNASData();
