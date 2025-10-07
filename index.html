@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NAS Status Viewer</title>
+  <title>Pamela's Travel Hub</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -17,6 +17,9 @@
 
   <script type="module">
     const API_URL = 'https://faa-nas-proxy.vercel.app/api/nas-proxy';
+    
+    // Flight tracking API key - User needs to add their free key from aviationstack.com
+    const FLIGHT_API_KEY = 'a9918f895f3cd554e7e4386460df8953';
     
     // Airport coordinates for weather lookup
     const AIRPORT_COORDS = {
@@ -43,8 +46,10 @@
     let error = null;
     let filter = 'all';
     let searchQuery = '';
-    let favorites = [];
+    let favorites = ['LAX', 'JFK']; // Default favorites
     let lastUpdate = null;
+    let activeTab = 'airports'; // 'airports' or 'flights'
+    let trackedFlights = []; // { airline, flightNumber, from, to, traveler }
 
     function getSeverity(airport) {
       if (!airport.status) return 'normal';
@@ -182,13 +187,31 @@
         });
         
         console.log('Successfully parsed airports:', airportData.length);
+        
+        // Always include LAX and JFK even if no issues
+        const baseAirports = ['LAX', 'JFK'];
+        for (const iata of baseAirports) {
+          if (!airportData.find(a => a.IATA === iata)) {
+            airportData.push({
+              IATA: iata,
+              name: AIRPORT_COORDS[iata]?.name || '',
+              status: null
+            });
+          }
+        }
+        
         airports = airportData;
         
-        // Fetch weather for airports
+        // Fetch weather for all airports
         const uniqueIatas = [...new Set(airportData.map(a => a.IATA))];
+        console.log('Fetching weather for airports:', uniqueIatas);
         for (const iata of uniqueIatas) {
           if (AIRPORT_COORDS[iata]) {
-            weather[iata] = await fetchWeather(iata);
+            const wx = await fetchWeather(iata);
+            if (wx) {
+              weather[iata] = wx;
+              console.log(`Weather for ${iata}:`, wx);
+            }
           }
         }
         
@@ -210,6 +233,120 @@
         favorites.push(iata);
       }
       render();
+    }
+
+    function addFlight(traveler, flightNumber, from, to) {
+      trackedFlights.push({ 
+        traveler, 
+        flightNumber: flightNumber.toUpperCase(), 
+        from: from.toUpperCase(), 
+        to: to.toUpperCase(), 
+        id: Date.now() 
+      });
+      localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      render();
+    }
+
+    function removeFlight(id) {
+      trackedFlights = trackedFlights.filter(f => f.id !== id);
+      localStorage.setItem('trackedFlights', JSON.stringify(trackedFlights));
+      render();
+    }
+
+    async function lookupFlight(flightNumber) {
+      if (FLIGHT_API_KEY === 'YOUR_API_KEY_HERE') {
+        alert('⚠️ Flight lookup requires an API key!\n\nPlease:\n1. Get a free key at aviationstack.com\n2. Replace YOUR_API_KEY_HERE in the code\n3. Try again');
+        return null;
+      }
+
+      try {
+        // Parse flight number - e.g., "UA125" -> airline: UA, flight: 125
+        const match = flightNumber.match(/^([A-Z]{2})(\d+)$/i);
+        if (!match) {
+          alert('Please enter flight number like: UA125, AA184, DL456');
+          return null;
+        }
+
+        const [, airline, number] = match;
+        
+        // Call AviationStack API
+        const url = `https://api.aviationstack.com/v1/flights?access_key=${FLIGHT_API_KEY}&flight_iata=${airline}${number}&limit=1`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error('Flight lookup failed');
+        }
+        
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          return null; // Flight not found
+        }
+        
+        const flight = data.data[0];
+        return {
+          from: flight.departure?.iata || null,
+          to: flight.arrival?.iata || null
+        };
+      } catch (err) {
+        console.error('Flight lookup error:', err);
+        return null;
+      }
+    }
+
+    async function showAddFlightForm() {
+      const traveler = prompt('Who is traveling? (e.g., Emily, Mom, Sister):');
+      if (!traveler) return;
+      
+      const flightNumber = prompt('Enter flight number (e.g., UA125, AA184, DL456):');
+      if (!flightNumber) return;
+      
+      // Show loading message
+      const originalRender = render;
+      loading = true;
+      render();
+      
+      // Try to look up the flight
+      const flightInfo = await lookupFlight(flightNumber.trim());
+      
+      loading = false;
+      
+      if (flightInfo && flightInfo.from && flightInfo.to) {
+        // Found the flight automatically!
+        addFlight(traveler, flightNumber.trim(), flightInfo.from, flightInfo.to);
+        alert(`✅ Found flight: ${flightInfo.from} → ${flightInfo.to}`);
+      } else {
+        // Couldn't find it - ask for route manually
+        alert('⚠️ Could not automatically find flight. Please enter route manually.');
+        const route = prompt('Enter route (e.g., LAX-JFK or LAX to JFK):');
+        if (!route) {
+          render();
+          return;
+        }
+        
+        // Parse route
+        const routeParts = route.toUpperCase().split(/[-\s]+(?:TO\s+)?/);
+        if (routeParts.length !== 2) {
+          alert('Please enter route as: LAX-JFK or LAX to JFK');
+          render();
+          return;
+        }
+        
+        const [from, to] = routeParts;
+        addFlight(traveler, flightNumber.trim(), from.trim(), to.trim());
+      }
+      
+      render();
+    }
+
+    function getAirportStatus(iata) {
+      const airport = airports.find(a => a.IATA === iata);
+      if (!airport || !airport.status) return { severity: 'normal', text: 'Normal Operations' };
+      
+      const severity = getSeverity(airport);
+      if (severity === 'severe') return { severity, text: '🔴 Severe Issues', airport };
+      if (severity === 'moderate') return { severity, text: '🟡 Delays', airport };
+      return { severity: 'normal', text: '🟢 Normal', airport };
     }
 
     function getFilteredAirports() {
@@ -343,7 +480,7 @@
             >
               🟢 Normal (${airports.length - severeCount - moderateCount})
             </button>
-          </div>
+        ` : ''}
         </div>
 
         <!-- Content -->
@@ -356,6 +493,114 @@
               <span>${error}</span>
             </div>
           ` : ''}
+
+          ${activeTab === 'flights' ? `
+            <!-- My Flights Tab -->
+            <div class="mb-6">
+              <button
+                onclick="window.showAddFlightForm()"
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Flight to Track
+              </button>
+            </div>
+
+            ${trackedFlights.length === 0 ? `
+              <div class="text-center py-12">
+                <svg class="w-16 h-16 mx-auto mb-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                <h3 class="text-xl font-semibold mb-2">No Flights Tracked</h3>
+                <p class="text-blue-300">Click "Add Flight to Track" to monitor flights</p>
+              </div>
+            ` : `
+              <div class="space-y-4">
+                ${trackedFlights.map(flight => {
+                  const fromStatus = getAirportStatus(flight.from);
+                  const toStatus = getAirportStatus(flight.to);
+                  const fromWx = weather[flight.from];
+                  const toWx = weather[flight.to];
+                  const worstSeverity = fromStatus.severity === 'severe' || toStatus.severity === 'severe' ? 'severe' :
+                                       fromStatus.severity === 'moderate' || toStatus.severity === 'moderate' ? 'moderate' : 'normal';
+                  
+                  return `
+                    <div class="bg-gradient-to-br from-blue-800 to-blue-900 rounded-2xl p-6 shadow-lg ${
+                      worstSeverity === 'severe' ? 'ring-2 ring-red-500' : 
+                      worstSeverity === 'moderate' ? 'ring-2 ring-yellow-500' : ''
+                    }">
+                      <div class="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 class="text-2xl font-bold">${flight.flightNumber}</h3>
+                          <p class="text-blue-300 text-sm mt-1">👤 ${flight.traveler}</p>
+                        </div>
+                        <button
+                          onclick="window.removeFlight(${flight.id})"
+                          class="text-red-400 hover:text-red-300 text-sm font-semibold px-3 py-1 rounded-lg hover:bg-red-900"
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+
+                      <!-- Route -->
+                      <div class="flex items-center gap-4 mb-4">
+                        <div class="flex-1 bg-blue-950 rounded-lg p-4">
+                          <div class="text-xs text-blue-400 mb-1">FROM</div>
+                          <div class="text-2xl font-bold">${flight.from}</div>
+                          <div class="mt-2 text-sm ${
+                            fromStatus.severity === 'severe' ? 'text-red-400' :
+                            fromStatus.severity === 'moderate' ? 'text-yellow-400' :
+                            'text-green-400'
+                          }">${fromStatus.text}</div>
+                          ${fromWx ? `
+                            <div class="text-xs text-blue-300 mt-2">
+                              ${getWeatherDescription(fromWx.code)} • ${fromWx.temp}°F • ${fromWx.wind} mph
+                            </div>
+                          ` : ''}
+                        </div>
+                        <div class="text-3xl">✈️</div>
+                        <div class="flex-1 bg-blue-950 rounded-lg p-4">
+                          <div class="text-xs text-blue-400 mb-1">TO</div>
+                          <div class="text-2xl font-bold">${flight.to}</div>
+                          <div class="mt-2 text-sm ${
+                            toStatus.severity === 'severe' ? 'text-red-400' :
+                            toStatus.severity === 'moderate' ? 'text-yellow-400' :
+                            'text-green-400'
+                          }">${toStatus.text}</div>
+                          ${toWx ? `
+                            <div class="text-xs text-blue-300 mt-2">
+                              ${getWeatherDescription(toWx.code)} • ${toWx.temp}°F • ${toWx.wind} mph
+                            </div>
+                          ` : ''}
+                        </div>
+                      </div>
+
+                      <!-- Detailed Status -->
+                      ${fromStatus.airport?.status || toStatus.airport?.status ? `
+                        <div class="space-y-2 text-sm">
+                          ${fromStatus.airport?.status?.reason ? `
+                            <div class="bg-blue-950 rounded-lg p-3">
+                              <span class="text-blue-300 font-semibold">${flight.from}: </span>
+                              <span>${fromStatus.airport.status.reason}</span>
+                            </div>
+                          ` : ''}
+                          ${toStatus.airport?.status?.reason ? `
+                            <div class="bg-blue-950 rounded-lg p-3">
+                              <span class="text-blue-300 font-semibold">${flight.to}: </span>
+                              <span>${toStatus.airport.status.reason}</span>
+                            </div>
+                          ` : ''}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          ` : `
+            <!-- Airport Status Tab -->`
 
           ${loading && airports.length === 0 ? `
             <div class="flex items-center justify-center py-12">
